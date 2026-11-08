@@ -1,0 +1,333 @@
+import 'package:flutter/material.dart';
+
+import '../services/daynight.dart';
+import '../services/fuel.dart';
+import '../services/gps.dart';
+import '../services/native.dart';
+import '../services/obd.dart';
+import '../services/reminders.dart';
+import '../services/settings.dart';
+import '../services/weather.dart';
+import '../widgets/common.dart';
+import '../widgets/gauge.dart';
+
+class QuickApp {
+  final String name;
+  final IconData icon;
+  final String pkg;
+  final Color color;
+  const QuickApp(this.name, this.icon, this.pkg, this.color);
+}
+
+const kQuickApps = [
+  QuickApp('Waze', Icons.navigation, 'com.waze', Color(0xFF33CCFF)),
+  QuickApp('Maps', Icons.map, 'com.google.android.apps.maps', Color(0xFF34A853)),
+  QuickApp('Spotify', Icons.music_note, 'com.spotify.music', Color(0xFF1DB954)),
+  QuickApp('Android Auto', Icons.directions_car, 'com.andrerinas.headunitrevived', Color(0xFF4285F4)),
+  QuickApp('YT Music', Icons.play_circle, 'com.google.android.apps.youtube.music', Color(0xFFFF0000)),
+  QuickApp('WhatsApp', Icons.chat, 'com.whatsapp', Color(0xFF25D366)),
+];
+
+Future<void> launchQuickApp(BuildContext context, QuickApp app) async {
+  final ok = await NativeBridge.launchApp(app.pkg);
+  if (!ok && context.mounted) {
+    toast(context, '${app.name} no está instalada en esta tableta',
+        action: SnackBarAction(
+          label: 'Instalar',
+          onPressed: () => NativeBridge.openUri('market://details?id=${app.pkg}'),
+        ));
+  }
+}
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Expanded(flex: 5, child: _SpeedPanel()),
+        const SizedBox(width: kGap),
+        const Expanded(flex: 4, child: _StatsColumn()),
+        const SizedBox(width: kGap),
+        Expanded(
+          flex: 4,
+          child: Column(
+            children: const [
+              Expanded(flex: 3, child: _WeatherMini()),
+              SizedBox(height: kGap),
+              Expanded(flex: 3, child: _MusicCard()),
+              SizedBox(height: kGap),
+              Expanded(flex: 4, child: _AppsGrid()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SpeedPanel extends StatelessWidget {
+  const _SpeedPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([GpsService.I, ObdService.I]),
+      builder: (context, _) {
+        final gps = GpsService.I;
+        final rpm = ObdService.I.value('0C');
+        final cs = Theme.of(context).colorScheme;
+        return Panel(
+          child: Column(
+            children: [
+              Expanded(
+                child: Gauge(
+                  value: gps.speedKmh,
+                  max: 200,
+                  unit: 'km/h',
+                  label: gps.speedFromObd ? 'OBD2' : (gps.ok ? 'GPS' : gps.status),
+                  warnFrom: 120,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text('RPM', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: rpm == null ? 0.0 : (rpm / 7000).clamp(0.0, 1.0).toDouble(),
+                        minHeight: 12,
+                        color: (rpm ?? 0) > 5000 ? Colors.redAccent : cs.primary,
+                        backgroundColor: cs.surfaceContainerHighest,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 64,
+                    child: Text(fmt(rpm), textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatsColumn extends StatelessWidget {
+  const _StatsColumn();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([GpsService.I, ObdService.I, Settings.I, FuelService.I, RemindersService.I]),
+      builder: (context, _) {
+        final obd = ObdService.I;
+        final gps = GpsService.I;
+        final temp = obd.value('05');
+        final batt = obd.connected ? obd.batteryV : null;
+        final next = RemindersService.I.next;
+        Widget row(Widget a, Widget b) => Expanded(
+              child: Row(children: [Expanded(child: a), const SizedBox(width: kGap), Expanded(child: b)]),
+            );
+        return Column(
+          children: [
+            row(
+              StatTile(
+                icon: Icons.thermostat,
+                label: 'Temp. motor',
+                value: fmt(temp),
+                unit: '°C',
+                accent: (temp ?? 0) >= 108 ? Colors.redAccent : null,
+              ),
+              StatTile(
+                icon: Icons.battery_charging_full,
+                label: 'Batería',
+                value: fmt(batt, 1),
+                unit: 'V',
+                accent: batt != null && (batt < 12.0 || batt > 15.0) ? Colors.orange : null,
+              ),
+            ),
+            const SizedBox(height: kGap),
+            row(
+              StatTile(
+                icon: Icons.local_gas_station,
+                label: 'Autonomía',
+                value: fmt(FuelMath.rangeKm),
+                unit: 'km',
+                sub: '${fmt(FuelMath.pct)} % ${FuelMath.fromObd ? '(OBD2)' : '(manual)'}',
+              ),
+              StatTile(
+                icon: Icons.route,
+                label: 'Viaje',
+                value: fmt(gps.tripKm, 1),
+                unit: 'km',
+                sub: 'Prom. ${fmt(gps.avgKmh)} km/h',
+              ),
+            ),
+            const SizedBox(height: kGap),
+            row(
+              StatTile(
+                icon: Icons.warning_amber,
+                label: 'Check engine',
+                value: !obd.connected ? '--' : (obd.milOn ? 'ON' : 'OK'),
+                accent: obd.connected ? (obd.milOn ? Colors.orange : Colors.green) : null,
+                sub: obd.connected ? '${obd.dtcCount} código(s)' : obd.message,
+              ),
+              StatTile(
+                icon: Icons.event,
+                label: next?.title ?? 'Recordatorios',
+                value: next == null ? '--' : '${next.daysLeft}',
+                unit: next == null ? '' : 'días',
+                accent: next != null && (next.daysLeft ?? 99) <= 15 ? Colors.orange : null,
+                sub: next?.date == null ? 'Agrega fechas' : fmtDate(next!.date!),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _WeatherMini extends StatelessWidget {
+  const _WeatherMini();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: WeatherService.I,
+      builder: (context, _) {
+        final w = WeatherService.I;
+        final (text, icon) = weatherInfo(w.code, night: DayNight.I.isNightNow);
+        final today = w.days.isNotEmpty ? w.days.first : null;
+        final cs = Theme.of(context).colorScheme;
+        return Panel(
+          child: Row(
+            children: [
+              Icon(icon, size: 52, color: Colors.amber),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FittedBox(
+                      child: Text('${fmt(w.temp)}°',
+                          style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w700, height: 1)),
+                    ),
+                    Text(w.error ?? text, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (today != null)
+                      Text('Máx ${fmt(today.max)}° · Mín ${fmt(today.min)}° · Lluvia ${today.rain}%',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MusicCard extends StatelessWidget {
+  const _MusicCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Panel(
+      onTap: () => launchQuickApp(context, kQuickApps[2]),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: const Color(0xFF1DB954), borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.music_note, color: Colors.white, size: 30),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Música', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                Text('Toca para abrir Spotify',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          IconButton(onPressed: () => NativeBridge.mediaKey('prev'), icon: const Icon(Icons.skip_previous), iconSize: 30),
+          IconButton.filled(
+            onPressed: () => NativeBridge.mediaKey('play'),
+            icon: const Icon(Icons.play_arrow),
+            iconSize: 32,
+          ),
+          IconButton(onPressed: () => NativeBridge.mediaKey('next'), icon: const Icon(Icons.skip_next), iconSize: 30),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppsGrid extends StatelessWidget {
+  const _AppsGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      padding: const EdgeInsets.all(8),
+      child: LayoutBuilder(builder: (context, c) {
+        const cols = 3;
+        final rows = (kQuickApps.length / cols).ceil();
+        final w = ((c.maxWidth - 8 * (cols - 1)) / cols).clamp(0.0, 4000.0).toDouble();
+        final h = ((c.maxHeight - 8 * (rows - 1)) / rows).clamp(0.0, 4000.0).toDouble();
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final app in kQuickApps)
+              SizedBox(
+                width: w,
+                height: h,
+                child: Material(
+                  color: app.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => launchQuickApp(context, app),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(app.icon, color: app.color, size: 30),
+                            const SizedBox(height: 4),
+                            Text(app.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      }),
+    );
+  }
+}

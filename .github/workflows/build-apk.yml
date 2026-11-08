@@ -1,0 +1,54 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generar proyecto Android
+        run: |
+          flutter create --platforms=android --org mx.autopanel --project-name autopanel /tmp/gen
+          rm -rf android
+          cp -r /tmp/gen/android ./android
+          python3 tool/patch_android.py
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Compilar APK
+        run: flutter build apk --release
+
+      - name: Preparar archivo
+        run: cp build/app/outputs/flutter-apk/app-release.apk AutoPanel.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoPanel-apk
+          path: AutoPanel.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: AutoPanel build ${{ github.run_number }}
+          body: APK compilado automáticamente desde ${{ github.sha }}
+          files: AutoPanel.apk
+          make_latest: true
