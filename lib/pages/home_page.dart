@@ -40,6 +40,12 @@ Future<void> launchQuickApp(BuildContext context, QuickApp app) async {
   }
 }
 
+/// Abre un enlace (ej. waze://) y si la app no está, ofrece instalarla.
+Future<void> launchUri(BuildContext context, String uri, QuickApp app) async {
+  final ok = await NativeBridge.openUri(uri);
+  if (!ok && context.mounted) await launchQuickApp(context, app);
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 

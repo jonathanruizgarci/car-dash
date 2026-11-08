@@ -35,6 +35,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import java.util.Locale
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -81,6 +86,10 @@ class MainActivity : FlutterActivity() {
                 }
                 "mediaKey" -> {
                     media(call.argument<String>("key") ?: "play")
+                    result.success(true)
+                }
+                "speak" -> {
+                    speak(call.argument<String>("text") ?: "")
                     result.success(true)
                 }
                 "hasNotifAccess" -> result.success(hasNotifAccess())
@@ -253,6 +262,73 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    // ---------- Voz de navegación ----------
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var pendingSpeech: String? = null
+    private var focusRequest: AudioFocusRequest? = null
+    private val navAttrs: AudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+
+    private fun speak(text: String) {
+        if (text.isBlank()) return
+        val engine = tts
+        if (engine == null) {
+            pendingSpeech = text
+            tts = TextToSpeech(applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    tts?.let { t ->
+                        val r = t.setLanguage(Locale("es", "MX"))
+                        if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+                            t.setLanguage(Locale("es"))
+                        }
+                        t.setAudioAttributes(navAttrs)
+                        t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {}
+                            override fun onDone(utteranceId: String?) {
+                                releaseFocus()
+                            }
+                            @Deprecated("Deprecated in Java")
+                            override fun onError(utteranceId: String?) {
+                                releaseFocus()
+                            }
+                        })
+                        ttsReady = true
+                        val p = pendingSpeech
+                        pendingSpeech = null
+                        if (p != null) speak(p)
+                    }
+                }
+            }
+            return
+        }
+        if (!ttsReady) {
+            pendingSpeech = text
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(navAttrs)
+                .build()
+            am.requestAudioFocus(req)
+            focusRequest = req
+        }
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "nav")
+    }
+
+    private fun releaseFocus() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val req = focusRequest ?: return
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.abandonAudioFocusRequest(req)
+            focusRequest = null
         }
     }
 
@@ -533,6 +609,10 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            tts?.shutdown()
+        } catch (e: Exception) {
+        }
         hideOverlay()
         closeSocket()
         super.onDestroy()

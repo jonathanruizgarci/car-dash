@@ -126,4 +126,10 @@ class NativeBridge {
       return null;
     }
   }
+
+  static Future<void> speak(String text) async {
+    try {
+      await _ch.invokeMethod('speak', {'text': text});
+    } catch (_) {}
+  }
 }

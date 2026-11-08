@@ -7,7 +7,7 @@ import 'pages/dtc_page.dart';
 import 'pages/engine_page.dart';
 import 'pages/fuel_page.dart';
 import 'pages/home_page.dart';
-import 'pages/nav_page.dart';
+import 'pages/map_page.dart';
 import 'pages/reminders_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/trip_page.dart';
@@ -16,6 +16,7 @@ import 'services/daynight.dart';
 import 'services/fuel.dart';
 import 'services/gps.dart';
 import 'services/music.dart';
+import 'services/nav.dart';
 import 'services/native.dart';
 import 'services/obd.dart';
 import 'services/reminders.dart';
@@ -33,6 +34,7 @@ Future<void> main() async {
   await Settings.I.load();
   await RemindersService.I.load();
   FuelService.I.loadCached();
+  NavService.I.init();
   runApp(const AutoPanelApp());
 
   NativeBridge.keepScreenOn(Settings.I.keepScreenOn);
@@ -129,7 +131,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   static const _pages = [
     HomePage(),
-    NavPage(),
+    MapPage(),
     EnginePage(),
     TripPage(),
     FuelPage(),

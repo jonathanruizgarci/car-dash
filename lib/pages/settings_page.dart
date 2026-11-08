@@ -160,6 +160,29 @@ class _SettingsPageState extends State<SettingsPage> {
                             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
+                          title: const Text('Música flotante sobre Waze/Maps/Android Auto'),
+                          subtitle: const Text('Al salir de AutoPanel aparece un reproductor encima'),
+                          value: s.floatingMusic,
+                          onChanged: (v) => s.update((x) => x.floatingMusic = v),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => NativeBridge.openNotifSettings(),
+                              icon: const Icon(Icons.music_note),
+                              label: const Text('Permiso de música'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => NativeBridge.openOverlaySettings(),
+                              icon: const Icon(Icons.picture_in_picture),
+                              label: const Text('Permiso para flotar'),
+                            ),
+                          ],
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
                           title: const Text('Mantener la pantalla encendida'),
                           value: s.keepScreenOn,
                           onChanged: (v) {
@@ -192,7 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           label: const Text('Instalar Headunit Revived'),
                         ),
                         const SizedBox(height: 8),
-                        Text('AutoPanel v1.1', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                        Text('AutoPanel v1.2', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                       ],
                     ),
                   ),
