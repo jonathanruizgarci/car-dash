@@ -31,6 +31,11 @@ jobs:
           cp -r /tmp/gen/android ./android
           python3 tool/patch_android.py
 
+      - name: Llave de firma fija (permite actualizar sin desinstalar)
+        run: |
+          mkdir -p ~/.android
+          cp tool/debug.keystore ~/.android/debug.keystore
+
       - name: Dependencias
         run: flutter pub get
 

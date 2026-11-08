@@ -1,6 +1,7 @@
 """Ajusta el proyecto Android generado por `flutter create`:
 permisos, modo launcher (HOME), visibilidad de apps y MainActivity nativa."""
 import glob
+import os
 import re
 import sys
 
@@ -15,6 +16,7 @@ PERMISSIONS = """
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
     <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
 """
@@ -46,6 +48,18 @@ QUERIES_INNER = "".join(
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="waze"/>
         </intent>"""
+
+SERVICE = """
+        <service
+            android:name=".MediaListener"
+            android:label="AutoPanel música"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+    """
 
 HOME_FILTER = """
             <intent-filter>
@@ -80,6 +94,9 @@ def patch_manifest():
         sys.exit("No se encontró el intent-filter LAUNCHER")
     xml = xml[: lm.end()] + HOME_FILTER + xml[lm.end():]
 
+    # Servicio para leer la música que suena
+    xml = xml.replace("</application>", SERVICE + "</application>", 1)
+
     with open(MANIFEST, "w", encoding="utf-8") as f:
         f.write(xml)
     print("Manifest actualizado")
@@ -97,6 +114,10 @@ def patch_activity():
         ours = f.read().replace("__PACKAGE__", pkg)
     with open(path, "w", encoding="utf-8") as f:
         f.write(ours)
+    with open("native/MediaListener.kt", encoding="utf-8") as f:
+        listener = f.read().replace("__PACKAGE__", pkg)
+    with open(os.path.join(os.path.dirname(path), "MediaListener.kt"), "w", encoding="utf-8") as f:
+        f.write(listener)
     print(f"MainActivity reemplazada en {path} ({pkg})")
 
 

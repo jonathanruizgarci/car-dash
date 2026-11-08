@@ -18,6 +18,7 @@ class Settings extends ChangeNotifier {
   String obdName = '';
   bool keepScreenOn = true;
   bool autoConnectObd = true;
+  bool floatingMusic = true;
 
   Future<void> load() async {
     prefs = await SharedPreferences.getInstance();
@@ -32,6 +33,7 @@ class Settings extends ChangeNotifier {
     obdName = prefs.getString('obdName') ?? obdName;
     keepScreenOn = prefs.getBool('keepScreenOn') ?? keepScreenOn;
     autoConnectObd = prefs.getBool('autoConnectObd') ?? autoConnectObd;
+    floatingMusic = prefs.getBool('floatingMusic') ?? floatingMusic;
   }
 
   Future<void> update(void Function(Settings s) fn) async {
@@ -48,5 +50,6 @@ class Settings extends ChangeNotifier {
     await prefs.setString('obdName', obdName);
     await prefs.setBool('keepScreenOn', keepScreenOn);
     await prefs.setBool('autoConnectObd', autoConnectObd);
+    await prefs.setBool('floatingMusic', floatingMusic);
   }
 }

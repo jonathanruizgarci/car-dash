@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart';
 
 class BtDevice {
@@ -91,5 +93,37 @@ class NativeBridge {
     try {
       await _ch.invokeMethod('obdDisconnect');
     } catch (_) {}
+  }
+
+  static Future<bool> _bool(String m) async {
+    try {
+      return (await _ch.invokeMethod<bool>(m)) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> hasNotifAccess() => _bool('hasNotifAccess');
+  static Future<bool> openNotifSettings() => _bool('openNotifSettings');
+  static Future<bool> canOverlay() => _bool('canOverlay');
+  static Future<bool> openOverlaySettings() => _bool('openOverlaySettings');
+  static Future<bool> showOverlay() => _bool('showOverlay');
+  static Future<bool> hideOverlay() => _bool('hideOverlay');
+
+  static Future<Map<String, dynamic>?> nowPlaying() async {
+    try {
+      final r = await _ch.invokeMethod<Map<dynamic, dynamic>>('nowPlaying');
+      return r == null ? null : Map<String, dynamic>.from(r);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<Uint8List?> nowPlayingArt() async {
+    try {
+      return await _ch.invokeMethod<Uint8List>('nowPlayingArt');
+    } catch (_) {
+      return null;
+    }
   }
 }

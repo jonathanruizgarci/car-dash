@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/daynight.dart';
 import '../services/fuel.dart';
 import '../services/gps.dart';
+import '../services/music.dart';
 import '../services/native.dart';
 import '../services/obd.dart';
 import '../services/reminders.dart';
@@ -246,36 +247,127 @@ class _MusicCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: MusicService.I,
+      builder: (context, _) => MusicPlayerCard(compact: true),
+    );
+  }
+}
+
+/// Tarjeta de música con portada, canción, progreso y controles.
+class MusicPlayerCard extends StatelessWidget {
+  final bool compact;
+  const MusicPlayerCard({super.key, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final m = MusicService.I;
     final cs = Theme.of(context).colorScheme;
+    final artSize = compact ? 64.0 : 150.0;
+    final cover = ClipRRect(
+      borderRadius: BorderRadius.circular(compact ? 12 : 18),
+      child: SizedBox(
+        width: artSize,
+        height: artSize,
+        child: m.art != null
+            ? Image.memory(m.art!, fit: BoxFit.cover, gaplessPlayback: true)
+            : Container(
+                color: const Color(0xFF1DB954),
+                child: Icon(Icons.music_note, color: Colors.white, size: artSize * 0.5),
+              ),
+      ),
+    );
+
+    if (!m.hasAccess) {
+      return Panel(
+        child: Row(
+          children: [
+            cover,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Música', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  Text('Activa el permiso para ver la canción y controlar Spotify',
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            FilledButton(onPressed: () => NativeBridge.openNotifSettings(), child: const Text('Activar')),
+          ],
+        ),
+      );
+    }
+
+    final title = m.active && m.title.isNotEmpty ? m.title : 'Nada sonando';
+    final sub = m.active ? [m.artist, if (m.sourceName.isNotEmpty) m.sourceName].where((e) => e.isNotEmpty).join(' · ') : 'Toca para abrir Spotify';
+    final controls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(onPressed: () => m.command('prev'), icon: const Icon(Icons.skip_previous), iconSize: compact ? 30 : 40),
+        IconButton.filled(
+          onPressed: () => m.command('play'),
+          icon: Icon(m.playing ? Icons.pause : Icons.play_arrow),
+          iconSize: compact ? 32 : 46,
+        ),
+        IconButton(onPressed: () => m.command('next'), icon: const Icon(Icons.skip_next), iconSize: compact ? 30 : 40),
+      ],
+    );
+    final progress = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: m.progress,
+            minHeight: 4,
+            color: const Color(0xFF1DB954),
+            backgroundColor: cs.surfaceContainerHighest,
+          ),
+        ),
+        if (!compact)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Text(fmtMs(m.positionMs), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                const Spacer(),
+                Text(fmtMs(m.durationMs), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+      ],
+    );
+
     return Panel(
       onTap: () => launchQuickApp(context, kQuickApps[2]),
       child: Row(
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(color: const Color(0xFF1DB954), borderRadius: BorderRadius.circular(14)),
-            child: const Icon(Icons.music_note, color: Colors.white, size: 30),
-          ),
+          cover,
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Música', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                Text('Toca para abrir Spotify',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: compact ? 15 : 22)),
+                Text(sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: compact ? 12 : 15, color: cs.onSurfaceVariant)),
+                SizedBox(height: compact ? 6 : 12),
+                progress,
+                if (!compact) ...[const SizedBox(height: 8), Center(child: controls)],
               ],
             ),
           ),
-          IconButton(onPressed: () => NativeBridge.mediaKey('prev'), icon: const Icon(Icons.skip_previous), iconSize: 30),
-          IconButton.filled(
-            onPressed: () => NativeBridge.mediaKey('play'),
-            icon: const Icon(Icons.play_arrow),
-            iconSize: 32,
-          ),
-          IconButton(onPressed: () => NativeBridge.mediaKey('next'), icon: const Icon(Icons.skip_next), iconSize: 30),
+          if (compact) controls,
         ],
       ),
     );

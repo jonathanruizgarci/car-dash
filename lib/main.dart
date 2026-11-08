@@ -7,6 +7,7 @@ import 'pages/dtc_page.dart';
 import 'pages/engine_page.dart';
 import 'pages/fuel_page.dart';
 import 'pages/home_page.dart';
+import 'pages/nav_page.dart';
 import 'pages/reminders_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/trip_page.dart';
@@ -14,6 +15,7 @@ import 'pages/weather_page.dart';
 import 'services/daynight.dart';
 import 'services/fuel.dart';
 import 'services/gps.dart';
+import 'services/music.dart';
 import 'services/native.dart';
 import 'services/obd.dart';
 import 'services/reminders.dart';
@@ -38,6 +40,7 @@ Future<void> main() async {
   DayNight.I.start();
   unawaited(GpsService.I.start());
   ObdService.I.startAuto();
+  MusicService.I.start();
 }
 
 ThemeData buildTheme(Brightness b) {
@@ -78,6 +81,7 @@ class _Dest {
 
 const _dests = [
   _Dest(Icons.dashboard, 'Inicio'),
+  _Dest(Icons.navigation, 'Navegar'),
   _Dest(Icons.speed, 'Motor'),
   _Dest(Icons.route, 'Viaje'),
   _Dest(Icons.local_gas_station, 'Gasolina'),
@@ -94,11 +98,38 @@ class Shell extends StatefulWidget {
   State<Shell> createState() => _ShellState();
 }
 
-class _ShellState extends State<Shell> {
+class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // De regreso en AutoPanel: quitamos el reproductor flotante.
+      NativeBridge.hideOverlay();
+      MusicService.I.start();
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else if (state == AppLifecycleState.paused) {
+      // Se abrió otra app (Waze, Maps, Android Auto…): mostramos la música encima.
+      if (Settings.I.floatingMusic) NativeBridge.showOverlay();
+      MusicService.I.stop();
+    }
+  }
 
   static const _pages = [
     HomePage(),
+    NavPage(),
     EnginePage(),
     TripPage(),
     FuelPage(),
