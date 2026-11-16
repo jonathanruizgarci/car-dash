@@ -130,6 +130,27 @@ def patch_activity():
     print(f"MainActivity reemplazada en {path} ({pkg})")
 
 
+def patch_gradle():
+    # El lint de algunos plugins (google_maps) truena en release: lo desactivamos en todos los módulos.
+    for path, block in (
+        ("android/build.gradle.kts", """
+subprojects {
+    tasks.matching { it.name.contains("lintVital") }.configureEach { enabled = false }
+}
+"""),
+        ("android/build.gradle", """
+subprojects {
+    tasks.matching { it.name.contains("lintVital") }.configureEach { enabled = false }
+}
+"""),
+    ):
+        if os.path.exists(path):
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(block)
+            print(f"Lint de release desactivado en {path}")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_activity()
+    patch_gradle()
