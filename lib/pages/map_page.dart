@@ -158,10 +158,14 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Izquierda 1/4: Spotify y opciones. Derecha 3/4: navegación.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Expanded(flex: 1, child: _SidePanel()),
+        const SizedBox(width: kGap),
         Expanded(
+          flex: 3,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: ListenableBuilder(
@@ -170,8 +174,6 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
         ),
-        const SizedBox(width: kGap),
-        const SizedBox(width: 350, child: _SidePanel()),
       ],
     );
   }
@@ -645,7 +647,7 @@ class _SidePanel extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Expanded(flex: 5, child: _SideMusic()),
+            const Expanded(flex: 6, child: _SideMusic()),
             const SizedBox(height: kGap),
             SizedBox(
               height: 92,
@@ -669,7 +671,7 @@ class _SidePanel extends StatelessWidget {
             ),
             const SizedBox(height: kGap),
             Expanded(
-              flex: 4,
+              flex: 3,
               child: Panel(
                 padding: const EdgeInsets.all(8),
                 child: GridView.count(
