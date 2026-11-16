@@ -94,6 +94,15 @@ def patch_manifest():
         sys.exit("No se encontró el intent-filter LAUNCHER")
     xml = xml[: lm.end()] + HOME_FILTER + xml[lm.end():]
 
+    # Key de Google Maps (tool/maps_key.txt o variable MAPS_API_KEY)
+    key = os.environ.get("MAPS_API_KEY", "").strip()
+    if not key and os.path.exists("tool/maps_key.txt"):
+        key = open("tool/maps_key.txt", encoding="utf-8").read().strip()
+    if key:
+        meta = f'\n        <meta-data android:name="com.google.android.geo.API_KEY" android:value="{key}"/>\n    '
+        xml = xml.replace("</application>", meta + "</application>", 1)
+        print("Key de Google Maps agregada")
+
     # Servicio para leer la música que suena
     xml = xml.replace("</application>", SERVICE + "</application>", 1)
 

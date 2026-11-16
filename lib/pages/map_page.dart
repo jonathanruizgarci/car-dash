@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:latlong2/latlong.dart';
 
 import '../services/daynight.dart';
@@ -12,8 +13,27 @@ import '../services/gps.dart';
 import '../services/music.dart';
 import '../services/nav.dart';
 import '../services/native.dart';
+import '../services/settings.dart';
 import '../widgets/common.dart';
 import 'home_page.dart';
+
+/// true cuando el APK se compiló con la key de Google Maps.
+const kHasGoogle = bool.fromEnvironment('HAS_GOOGLE');
+
+gm.LatLng _g(LatLng p) => gm.LatLng(p.latitude, p.longitude);
+
+const _nightStyle = '''[
+{"elementType":"geometry","stylers":[{"color":"#1d2c35"}]},
+{"elementType":"labels.text.fill","stylers":[{"color":"#9fb3bd"}]},
+{"elementType":"labels.text.stroke","stylers":[{"color":"#1a2a32"}]},
+{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#22343e"}]},
+{"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#1f3a33"}]},
+{"featureType":"road","elementType":"geometry","stylers":[{"color":"#33495a"}]},
+{"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#1d2c35"}]},
+{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#4a6577"}]},
+{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#2a3d48"}]},
+{"featureType":"water","elementType":"geometry","stylers":[{"color":"#0e1a21"}]}
+]''';
 
 /// Navegador dentro de la app: mapa, búsqueda, ruta y guía por voz, con música a un lado.
 class MapPage extends StatefulWidget {
@@ -33,6 +53,10 @@ class _MapPageState extends State<MapPage> {
   bool _headingUp = true;
   bool _showResults = false;
   bool _showMusic = true;
+  gm.GoogleMapController? _gctl;
+  double _gZoom = 15;
+
+  bool get _useGoogle => kHasGoogle && Settings.I.mapProvider == 'google';
 
   static const _fallback = LatLng(18.9036, -98.4366); // Atlixco
 
@@ -71,6 +95,22 @@ class _MapPageState extends State<MapPage> {
     final n = NavService.I;
     if (!_ready || !n.hasRoute) return;
     _follow = false;
+    if (_useGoogle) {
+      final c = _gctl;
+      if (c == null) return;
+      var minLat = 90.0, maxLat = -90.0, minLon = 180.0, maxLon = -180.0;
+      for (final p in n.route) {
+        minLat = math.min(minLat, p.latitude);
+        maxLat = math.max(maxLat, p.latitude);
+        minLon = math.min(minLon, p.longitude);
+        maxLon = math.max(maxLon, p.longitude);
+      }
+      c.animateCamera(gm.CameraUpdate.newLatLngBounds(
+        gm.LatLngBounds(southwest: gm.LatLng(minLat, minLon), northeast: gm.LatLng(maxLat, maxLon)),
+        80,
+      ));
+      return;
+    }
     try {
       _map.fitCamera(CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(n.route),
@@ -88,6 +128,18 @@ class _MapPageState extends State<MapPage> {
     final nav = NavService.I.navigating;
     final heading = g.last?.heading ?? 0;
     final moving = g.speedKmh > 4;
+    if (_useGoogle) {
+      final c = _gctl;
+      if (c == null) return;
+      final center = nav && moving ? const Distance().offset(me, 60, heading) : me;
+      c.animateCamera(gm.CameraUpdate.newCameraPosition(gm.CameraPosition(
+        target: _g(center),
+        zoom: nav ? (g.speedKmh > 70 ? 16.5 : 17.5) : _gZoom,
+        bearing: _headingUp && nav ? heading : 0,
+        tilt: nav ? 50 : 0,
+      )));
+      return;
+    }
     final zoom = nav ? (g.speedKmh > 70 ? 16.0 : 17.0) : _map.camera.zoom;
     // En navegación, el auto va abajo de la pantalla: centramos un poco adelante.
     final center = nav && moving ? const Distance().offset(me, 90, heading) : me;
@@ -100,6 +152,11 @@ class _MapPageState extends State<MapPage> {
   void _recenter() {
     setState(() => _follow = true);
     final me = _me;
+    if (me != null && _useGoogle) {
+      _gZoom = NavService.I.navigating ? 17.5 : 16;
+      _onMove();
+      return;
+    }
     if (me != null && _ready) {
       try {
         _map.moveAndRotate(me, NavService.I.navigating ? 17 : 16, 0);
@@ -228,7 +285,7 @@ class _MapPageState extends State<MapPage> {
 
     return Stack(
       children: [
-        FlutterMap(
+        if (_useGoogle) _googleMap(n, me, dark) else FlutterMap(
           mapController: _map,
           options: MapOptions(
             initialCenter: me ?? _fallback,
@@ -294,13 +351,22 @@ class _MapPageState extends State<MapPage> {
                 setState(() => _showMusic = !_showMusic);
               }),
               const SizedBox(height: 8),
+              if (_useGoogle) ...[
+                _roundBtn(Settings.I.traffic ? Icons.traffic : Icons.traffic_outlined, () {
+                  Settings.I.update((x) => x.traffic = !x.traffic);
+                  setState(() {});
+                  toast(context, Settings.I.traffic ? 'Tráfico activado' : 'Tráfico desactivado');
+                }),
+                const SizedBox(height: 8),
+              ],
               _roundBtn(Icons.add, () => _zoom(1)),
               const SizedBox(height: 8),
               _roundBtn(Icons.remove, () => _zoom(-1)),
               const SizedBox(height: 8),
               _roundBtn(_headingUp ? Icons.explore : Icons.explore_outlined, () {
                 setState(() => _headingUp = !_headingUp);
-                if (!_headingUp && _ready) _map.rotate(0);
+                if (!_headingUp && _ready && !_useGoogle) _map.rotate(0);
+                if (!_headingUp && _useGoogle) _onMove();
                 toast(context, _headingUp ? 'El mapa gira con tu dirección' : 'Norte arriba');
               }),
               const SizedBox(height: 8),
@@ -351,14 +417,82 @@ class _MapPageState extends State<MapPage> {
         Positioned(
           left: 8,
           bottom: 2,
-          child: Text('© OpenStreetMap · OSRM',
+          child: Text(_useGoogle ? 'Rutas: OSRM' : '© OpenStreetMap · OSRM',
               style: TextStyle(fontSize: 9, color: dark ? Colors.white54 : Colors.black45)),
         ),
       ],
     );
   }
 
+  Widget _googleMap(NavService n, LatLng? me, bool dark) {
+    final markers = <gm.Marker>{
+      for (var i = 0; i < n.results.length; i++)
+        gm.Marker(
+          markerId: gm.MarkerId('r$i'),
+          position: _g(n.results[i].point),
+          infoWindow: gm.InfoWindow(title: n.results[i].name, snippet: n.results[i].detail),
+          icon: gm.BitmapDescriptor.defaultMarkerWithHue(gm.BitmapDescriptor.hueOrange),
+          onTap: () => _choose(n.results[i]),
+        ),
+      if (n.destination != null)
+        gm.Marker(
+          markerId: const gm.MarkerId('dest'),
+          position: _g(n.destination!.point),
+          infoWindow: gm.InfoWindow(title: n.destination!.name),
+        ),
+    };
+    final polylines = <gm.Polyline>{
+      if (n.hasRoute)
+        gm.Polyline(
+          polylineId: const gm.PolylineId('route'),
+          points: n.route.map(_g).toList(),
+          color: const Color(0xFF1A73E8),
+          width: 8,
+          jointType: gm.JointType.round,
+          startCap: gm.Cap.roundCap,
+          endCap: gm.Cap.roundCap,
+        ),
+    };
+    return Listener(
+      // Si el usuario mueve el mapa con el dedo, dejamos de seguir al auto.
+      onPointerMove: (_) {
+        if (_follow) setState(() => _follow = false);
+      },
+      child: gm.GoogleMap(
+        initialCameraPosition: gm.CameraPosition(target: _g(me ?? _fallback), zoom: 15),
+        onMapCreated: (c) {
+          _gctl = c;
+          _ready = true;
+          _onMove();
+        },
+        onCameraMove: (pos) => _gZoom = pos.zoom,
+        style: dark ? _nightStyle : null,
+        trafficEnabled: Settings.I.traffic,
+        myLocationEnabled: true,
+        myLocationButtonEnabled: false,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
+        compassEnabled: true,
+        buildingsEnabled: true,
+        markers: markers,
+        polylines: polylines,
+        onTap: (_) {
+          _focus.unfocus();
+          if (_showResults) setState(() => _showResults = false);
+        },
+        onLongPress: (p) {
+          if (n.navigating) return;
+          NavService.I.routeTo(Place('Punto en el mapa', '', LatLng(p.latitude, p.longitude)));
+        },
+      ),
+    );
+  }
+
   void _zoom(double d) {
+    if (_useGoogle) {
+      _gctl?.animateCamera(gm.CameraUpdate.zoomBy(d));
+      return;
+    }
     if (!_ready) return;
     try {
       _map.move(_map.camera.center, (_map.camera.zoom + d).clamp(4, 19).toDouble());
@@ -525,32 +659,32 @@ class _MapPageState extends State<MapPage> {
     final step = n.nextStep;
     final then = n.afterNext;
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 560),
+      constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Material(
             color: const Color(0xFF0B7A55),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
             elevation: 6,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
+              padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
               child: Row(
                 children: [
-                  Icon(step?.icon ?? Icons.straight, color: Colors.white, size: 58),
-                  const SizedBox(width: 14),
+                  Icon(step?.icon ?? Icons.straight, color: Colors.white, size: 40),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(fmtDist(n.distToNext),
-                            style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, height: 1.1)),
+                            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.1)),
                         Text(
                           step == null ? 'Sigue la ruta' : _capitalize(step.text),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -571,7 +705,7 @@ class _MapPageState extends State<MapPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text('Luego ', style: TextStyle(color: Colors.white70)),
-                      Icon(then.icon, color: Colors.white, size: 22),
+                      Icon(then.icon, color: Colors.white, size: 18),
                     ],
                   ),
                 ),

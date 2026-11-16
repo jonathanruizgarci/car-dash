@@ -41,9 +41,11 @@ jobs:
 
       - name: Compilar APK
         run: |
-          flutter build apk --release
+          DEF=""
+          if [ -s tool/maps_key.txt ]; then DEF="--dart-define=HAS_GOOGLE=true"; fi
+          flutter build apk --release $DEF
           cp build/app/outputs/flutter-apk/app-release.apk AutoPanel.apk
-          flutter build apk --release --split-per-abi
+          flutter build apk --release --split-per-abi $DEF
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk AutoPanel-arm64.apk
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk AutoPanel-arm32.apk
 
