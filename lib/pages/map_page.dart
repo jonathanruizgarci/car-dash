@@ -32,6 +32,7 @@ class _MapPageState extends State<MapPage> {
   bool _follow = true;
   bool _headingUp = true;
   bool _showResults = false;
+  bool _showMusic = true;
 
   static const _fallback = LatLng(18.9036, -98.4366); // Atlixco
 
@@ -163,8 +164,8 @@ class _MapPageState extends State<MapPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Expanded(flex: 1, child: _SpotifyPanel()),
-        const SizedBox(width: kGap),
+        if (_showMusic) const Expanded(flex: 1, child: _SpotifyPanel()),
+        if (_showMusic) const SizedBox(width: kGap),
         Expanded(
           flex: 3,
           child: ClipRRect(
@@ -289,6 +290,10 @@ class _MapPageState extends State<MapPage> {
           top: 12,
           child: Column(
             children: [
+              _roundBtn(_showMusic ? Icons.fullscreen : Icons.queue_music, () {
+                setState(() => _showMusic = !_showMusic);
+              }),
+              const SizedBox(height: 8),
               _roundBtn(Icons.add, () => _zoom(1)),
               const SizedBox(height: 8),
               _roundBtn(Icons.remove, () => _zoom(-1)),
@@ -384,14 +389,14 @@ class _MapPageState extends State<MapPage> {
         }),
     ];
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
+      constraints: const BoxConstraints(maxWidth: 360),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           Material(
             elevation: 4,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(22),
             color: cs.surface,
             child: TextField(
               controller: _search,
@@ -399,10 +404,11 @@ class _MapPageState extends State<MapPage> {
               onChanged: _onSearchChanged,
               onSubmitted: (q) => NavService.I.search(q),
               textInputAction: TextInputAction.search,
-              style: const TextStyle(fontSize: 18),
+              style: const TextStyle(fontSize: 15),
               decoration: InputDecoration(
+                isDense: true,
                 hintText: '¿A dónde vamos?',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _search.text.isEmpty && !n.hasRoute
                     ? null
                     : IconButton(
@@ -415,11 +421,11 @@ class _MapPageState extends State<MapPage> {
                         },
                       ),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(vertical: 11),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: quick)),
           if (_showResults && (n.searching || n.results.isNotEmpty || n.searchError != null))
             Padding(
@@ -430,7 +436,7 @@ class _MapPageState extends State<MapPage> {
                 color: cs.surface,
                 clipBehavior: Clip.antiAlias,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 330),
+                  constraints: const BoxConstraints(maxHeight: 300),
                   child: n.searching && n.results.isEmpty
                       ? const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator())
                       : n.results.isEmpty
@@ -466,10 +472,12 @@ class _MapPageState extends State<MapPage> {
   Widget _chip(IconData icon, String label, VoidCallback onTap) => Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ActionChip(
-          avatar: Icon(icon, size: 18),
-          label: Text(label),
+          avatar: Icon(icon, size: 16),
+          label: Text(label, style: const TextStyle(fontSize: 12)),
           onPressed: onTap,
           elevation: 2,
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
       );
 

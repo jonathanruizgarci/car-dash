@@ -102,6 +102,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int index = 0;
+  bool menuHidden = false;
 
   @override
   void initState() {
@@ -152,13 +153,17 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         body: SafeArea(
           child: Row(
             children: [
-              _SideNav(index: index, onTap: (i) => setState(() => index = i)),
+              if (!menuHidden) _SideNav(index: index, onTap: (i) => setState(() => index = i)),
+              if (menuHidden) const SizedBox(width: kGap),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(0, 0, kGap, kGap),
                   child: Column(
                     children: [
-                      const _TopBar(),
+                      _TopBar(
+                        menuHidden: menuHidden,
+                        onToggleMenu: () => setState(() => menuHidden = !menuHidden),
+                      ),
                       Expanded(
                         child: IndexedStack(index: index, sizing: StackFit.expand, children: _pages),
                       ),
@@ -224,7 +229,9 @@ class _SideNav extends StatelessWidget {
 }
 
 class _TopBar extends StatefulWidget {
-  const _TopBar();
+  final bool menuHidden;
+  final VoidCallback onToggleMenu;
+  const _TopBar({required this.menuHidden, required this.onToggleMenu});
 
   @override
   State<_TopBar> createState() => _TopBarState();
@@ -253,6 +260,12 @@ class _TopBarState extends State<_TopBar> {
           };
           return Row(
             children: [
+              IconButton(
+                onPressed: widget.onToggleMenu,
+                tooltip: widget.menuHidden ? 'Mostrar menú' : 'Ocultar menú',
+                icon: Icon(widget.menuHidden ? Icons.menu : Icons.menu_open),
+              ),
+              const SizedBox(width: 4),
               Icon(Icons.directions_car, color: cs.primary),
               const SizedBox(width: 8),
               Flexible(
