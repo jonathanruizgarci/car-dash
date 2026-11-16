@@ -92,6 +92,16 @@ class MainActivity : FlutterActivity() {
                     speak(call.argument<String>("text") ?: "")
                     result.success(true)
                 }
+                "mediaCustom" -> {
+                    val id = call.argument<String>("id") ?: ""
+                    controller()?.transportControls?.sendCustomAction(id, null)
+                    result.success(true)
+                }
+                "mediaSeek" -> {
+                    val ms = (call.argument<Number>("ms") ?: 0).toLong()
+                    controller()?.transportControls?.seekTo(ms)
+                    result.success(true)
+                }
                 "hasNotifAccess" -> result.success(hasNotifAccess())
                 "openNotifSettings" -> {
                     try {
@@ -139,6 +149,12 @@ class MainActivity : FlutterActivity() {
                         map["position"] = livePosition(st)
                         map["playing"] = st?.state == PlaybackState.STATE_PLAYING
                         map["package"] = c.packageName
+                        map["queue"] = c.queueTitle?.toString() ?: ""
+                        val customs = ArrayList<Map<String, String>>()
+                        st?.customActions?.forEach { a ->
+                            customs.add(mapOf("id" to a.action, "name" to (a.name?.toString() ?: "")))
+                        }
+                        map["custom"] = customs
                         result.success(map)
                     }
                 }

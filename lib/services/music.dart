@@ -21,6 +21,8 @@ class MusicService extends ChangeNotifier {
   int positionMs = 0;
   int durationMs = 0;
   Uint8List? art;
+  String queue = '';
+  List<MediaAction> customActions = [];
 
   String _artKey = '';
   Timer? _timer;
@@ -68,6 +70,12 @@ class MusicService extends ChangeNotifier {
         playing = (m['playing'] as bool?) ?? false;
         positionMs = (m['position'] as num?)?.toInt() ?? 0;
         durationMs = (m['duration'] as num?)?.toInt() ?? 0;
+        queue = (m['queue'] as String?) ?? '';
+        customActions = ((m['custom'] as List?) ?? const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .map((e) => MediaAction((e['id'] as String?) ?? '', (e['name'] as String?) ?? ''))
+            .where((a) => a.id.isNotEmpty)
+            .toList();
         final key = '$title|$artist|$album';
         if (key != _artKey) {
           _artKey = key;
@@ -80,8 +88,37 @@ class MusicService extends ChangeNotifier {
     }
   }
 
+  Future<void> seek(int ms) async {
+    positionMs = ms;
+    notifyListeners();
+    await NativeBridge.mediaSeek(ms);
+  }
+
   Future<void> command(String key) async {
     await NativeBridge.mediaKey(key);
+    await Future.delayed(const Duration(milliseconds: 350));
+    await refresh();
+  }
+}
+
+class MediaAction {
+  final String id;
+  final String name;
+  const MediaAction(this.id, this.name);
+}
+
+extension MusicExtras on MusicService {
+  /// Busca una acción de la app de música (Spotify) por palabras clave en su id o nombre.
+  MediaAction? findAction(List<String> keys) {
+    for (final a in customActions) {
+      final t = '${a.id} ${a.name}'.toLowerCase();
+      if (keys.any(t.contains)) return a;
+    }
+    return null;
+  }
+
+  Future<void> custom(MediaAction a) async {
+    await NativeBridge.mediaCustom(a.id);
     await Future.delayed(const Duration(milliseconds: 350));
     await refresh();
   }

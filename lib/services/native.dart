@@ -132,4 +132,16 @@ class NativeBridge {
       await _ch.invokeMethod('speak', {'text': text});
     } catch (_) {}
   }
+
+  static Future<void> mediaCustom(String id) async {
+    try {
+      await _ch.invokeMethod('mediaCustom', {'id': id});
+    } catch (_) {}
+  }
+
+  static Future<void> mediaSeek(int ms) async {
+    try {
+      await _ch.invokeMethod('mediaSeek', {'ms': ms});
+    } catch (_) {}
+  }
 }

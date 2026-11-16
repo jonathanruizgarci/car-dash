@@ -215,7 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           label: const Text('Instalar Headunit Revived'),
                         ),
                         const SizedBox(height: 8),
-                        Text('AutoPanel v1.2', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                        Text('AutoPanel v1.3', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                       ],
                     ),
                   ),

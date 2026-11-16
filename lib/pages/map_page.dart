@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -10,7 +11,7 @@ import '../services/fuel.dart';
 import '../services/gps.dart';
 import '../services/music.dart';
 import '../services/nav.dart';
-import '../services/obd.dart';
+import '../services/native.dart';
 import '../widgets/common.dart';
 import 'home_page.dart';
 
@@ -162,7 +163,7 @@ class _MapPageState extends State<MapPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Expanded(flex: 1, child: _SidePanel()),
+        const Expanded(flex: 1, child: _SpotifyPanel()),
         const SizedBox(width: kGap),
         Expanded(
           flex: 3,
@@ -251,12 +252,12 @@ class _MapPageState extends State<MapPage> {
           ),
           children: [
             TileLayer(
-              urlTemplate: dark
-                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-                  : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
+              // OpenStreetMap: gratis y sin llave. De noche se oscurece con un filtro.
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'mx.autopanel.autopanel',
+              maxNativeZoom: 19,
               maxZoom: 20,
+              tileBuilder: dark ? darkModeTileBuilder : null,
             ),
             if (n.hasRoute)
               PolylineLayer(
@@ -345,7 +346,7 @@ class _MapPageState extends State<MapPage> {
         Positioned(
           left: 8,
           bottom: 2,
-          child: Text('© OpenStreetMap · © CARTO · OSRM',
+          child: Text('© OpenStreetMap · OSRM',
               style: TextStyle(fontSize: 9, color: dark ? Colors.white54 : Colors.black45)),
         ),
       ],
@@ -632,172 +633,243 @@ class _MapPageState extends State<MapPage> {
 
 String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
-/// Panel lateral: música, datos del auto y opciones.
-class _SidePanel extends StatelessWidget {
-  const _SidePanel();
+/// Panel izquierdo estilo Spotify: fondo con la portada, canción, avance y controles.
+class _SpotifyPanel extends StatelessWidget {
+  const _SpotifyPanel();
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: Listenable.merge([MusicService.I, ObdService.I, GpsService.I, NavService.I]),
+      listenable: Listenable.merge([MusicService.I, NavService.I]),
       builder: (context, _) {
-        final o = ObdService.I;
+        final m = MusicService.I;
         final n = NavService.I;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Expanded(flex: 6, child: _SideMusic()),
-            const SizedBox(height: kGap),
-            SizedBox(
-              height: 92,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: StatTile(icon: Icons.local_gas_station, label: 'Autonomía', value: fmt(FuelMath.rangeKm), unit: 'km'),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: StatTile(
-                      icon: Icons.thermostat,
-                      label: 'Motor',
-                      value: fmt(o.value('05')),
-                      unit: '°C',
-                      accent: (o.value('05') ?? 0) >= 108 ? Colors.redAccent : null,
-                    ),
-                  ),
-                ],
-              ),
+        if (!m.hasAccess) {
+          return Panel(
+            color: const Color(0xFF121212),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 64),
+                const SizedBox(height: 12),
+                const Text('Spotify', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                const Text('Activa el permiso "AutoPanel música" para ver la canción y controlarla',
+                    textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: () => NativeBridge.openNotifSettings(), child: const Text('Activar')),
+              ],
             ),
-            const SizedBox(height: kGap),
-            Expanded(
-              flex: 3,
-              child: Panel(
-                padding: const EdgeInsets.all(8),
-                child: GridView.count(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 6,
-                  crossAxisSpacing: 6,
-                  childAspectRatio: 1.15,
+          );
+        }
+
+        final shuffle = m.findAction(['shuffle', 'aleatori']);
+        final repeat = m.findAction(['repeat', 'repetir', 'repetición']);
+        final like = m.findAction(['like', 'favorit', 'save', 'guardar', 'collection', 'heart', 'me gusta']);
+        final title = m.active && m.title.isNotEmpty ? m.title : 'Nada sonando';
+        final from = m.queue.isNotEmpty ? m.queue : (m.sourceName.isNotEmpty ? m.sourceName : 'Spotify');
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Fondo: portada desenfocada
+              if (m.art != null)
+                ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                  child: Image.memory(m.art!, fit: BoxFit.cover, gaplessPlayback: true),
+                )
+              else
+                Container(color: const Color(0xFF1E3A5F)),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black.withValues(alpha: 0.30), Colors.black.withValues(alpha: 0.88)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _opt(context, Icons.navigation, 'Waze', const Color(0xFF33CCFF), () {
-                      final d = n.destination;
-                      if (d != null) {
-                        launchUri(context, 'waze://?ll=${d.point.latitude},${d.point.longitude}&navigate=yes', kQuickApps[0]);
-                      } else {
-                        launchQuickApp(context, kQuickApps[0]);
-                      }
-                    }),
-                    _opt(context, Icons.map, 'Google Maps', const Color(0xFF34A853), () {
-                      final d = n.destination;
-                      if (d != null) {
-                        launchUri(context, 'google.navigation:q=${d.point.latitude},${d.point.longitude}', kQuickApps[1]);
-                      } else {
-                        launchQuickApp(context, kQuickApps[1]);
-                      }
-                    }),
-                    _opt(context, Icons.directions_car, 'Android Auto', const Color(0xFF4285F4),
-                        () => launchQuickApp(context, kQuickApps[3])),
-                    _opt(context, n.voice ? Icons.record_voice_over : Icons.voice_over_off, n.voice ? 'Voz activa' : 'Voz apagada',
-                        cs.primary, () => n.setVoice(!n.voice)),
-                    _opt(context, Icons.music_note, 'Spotify', const Color(0xFF1DB954), () => launchQuickApp(context, kQuickApps[2])),
-                    _opt(context, Icons.chat, 'WhatsApp', const Color(0xFF25D366), () => launchQuickApp(context, kQuickApps[5])),
+                    const Text('Reproduciendo desde',
+                        textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(from,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: m.art != null
+                                ? Image.memory(m.art!, fit: BoxFit.cover, gaplessPlayback: true)
+                                : Container(
+                                    color: const Color(0xFF282828),
+                                    child: const FittedBox(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(20),
+                                        child: Icon(Icons.music_note, color: Colors.white54),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
+                              Text(m.active ? m.artist : 'Toca ▶ o abre Spotify',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 15)),
+                            ],
+                          ),
+                        ),
+                        if (like != null)
+                          IconButton(
+                            onPressed: () => m.custom(like),
+                            icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+                            tooltip: like.name,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const _SeekBar(),
+                    const SizedBox(height: 4),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ctl(Icons.shuffle, shuffle == null ? null : () => m.custom(shuffle), 26, shuffle?.name),
+                          const SizedBox(width: 6),
+                          _ctl(Icons.skip_previous_rounded, () => m.command('prev'), 40, 'Anterior'),
+                          const SizedBox(width: 6),
+                          Material(
+                            color: Colors.white,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => m.command('play'),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Icon(m.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    color: Colors.black, size: 40),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _ctl(Icons.skip_next_rounded, () => m.command('next'), 40, 'Siguiente'),
+                          const SizedBox(width: 6),
+                          _ctl(Icons.repeat, repeat == null ? null : () => m.custom(repeat), 26, repeat?.name),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _ctl(Icons.speaker_group_outlined, () => launchQuickApp(context, kQuickApps[2]), 24,
+                            'Abrir Spotify (dispositivos)'),
+                        const Spacer(),
+                        _ctl(n.voice ? Icons.record_voice_over : Icons.voice_over_off, () => n.setVoice(!n.voice), 24,
+                            n.voice ? 'Voz de navegación activa' : 'Voz apagada'),
+                        _ctl(Icons.navigation_outlined, () {
+                          final d = n.destination;
+                          if (d != null) {
+                            launchUri(context, 'waze://?ll=${d.point.latitude},${d.point.longitude}&navigate=yes',
+                                kQuickApps[0]);
+                          } else {
+                            launchQuickApp(context, kQuickApps[0]);
+                          }
+                        }, 24, 'Abrir en Waze'),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
   }
 
-  Widget _opt(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) => Material(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: color, size: 28),
-                  const SizedBox(height: 4),
-                  Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-        ),
+  Widget _ctl(IconData icon, VoidCallback? onTap, double size, String? tip) => IconButton(
+        onPressed: onTap,
+        tooltip: tip,
+        icon: Icon(icon, size: size),
+        color: Colors.white,
+        disabledColor: Colors.white24,
       );
 }
 
-/// Música vertical para el panel lateral.
-class _SideMusic extends StatelessWidget {
-  const _SideMusic();
+/// Barra de avance de la canción (se puede arrastrar para adelantar).
+class _SeekBar extends StatefulWidget {
+  const _SeekBar();
+
+  @override
+  State<_SeekBar> createState() => _SeekBarState();
+}
+
+class _SeekBarState extends State<_SeekBar> {
+  double? _drag;
 
   @override
   Widget build(BuildContext context) {
     final m = MusicService.I;
-    final cs = Theme.of(context).colorScheme;
-    if (!m.hasAccess) return const MusicPlayerCard(compact: true);
-    return Panel(
-      onTap: () => launchQuickApp(context, kQuickApps[2]),
-      child: LayoutBuilder(builder: (context, c) {
-        final art = math.max(0.0, math.min(c.maxWidth, c.maxHeight - 112));
-        return Column(
+    final dur = m.durationMs;
+    final value = (_drag ?? m.progress).clamp(0.0, 1.0).toDouble();
+    final shownMs = _drag != null ? (_drag! * dur).round() : m.positionMs;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: Colors.white,
+            inactiveTrackColor: Colors.white24,
+            thumbColor: Colors.white,
+            overlayShape: SliderComponentShape.noOverlay,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          ),
+          child: Slider(
+            value: value,
+            onChanged: dur <= 0 ? null : (v) => setState(() => _drag = v),
+            onChangeEnd: dur <= 0
+                ? null
+                : (v) {
+                    m.seek((v * dur).round());
+                    setState(() => _drag = null);
+                  },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
           children: [
-            Expanded(
-              child: Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: art,
-                    height: art,
-                    child: m.art != null
-                        ? Image.memory(m.art!, fit: BoxFit.cover, gaplessPlayback: true)
-                        : Container(
-                            color: const Color(0xFF1DB954),
-                            child: Icon(Icons.music_note, color: Colors.white, size: art * 0.45),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(m.active && m.title.isNotEmpty ? m.title : 'Nada sonando',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            Text(m.active ? m.artist : 'Toca para abrir Spotify',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: m.progress,
-                minHeight: 4,
-                color: const Color(0xFF1DB954),
-                backgroundColor: cs.surfaceContainerHighest,
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(onPressed: () => m.command('prev'), icon: const Icon(Icons.skip_previous), iconSize: 32),
-                IconButton.filled(
-                  onPressed: () => m.command('play'),
-                  icon: Icon(m.playing ? Icons.pause : Icons.play_arrow),
-                  iconSize: 34,
-                ),
-                IconButton(onPressed: () => m.command('next'), icon: const Icon(Icons.skip_next), iconSize: 32),
-              ],
-            ),
+            Text(fmtMs(shownMs), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const Spacer(),
+            Text(fmtMs(dur), style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ],
-        );
-      }),
+        ),
+      ],
     );
   }
 }
